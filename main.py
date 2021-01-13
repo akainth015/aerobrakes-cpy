@@ -6,7 +6,7 @@ flight_data = [(datum[0], datum[1]) for datum in [
 
 didx = 0
 
-
+# TODO @pablo add in altimeter and sensor reading
 def get_altitude():
     global didx
     """
@@ -17,7 +17,15 @@ def get_altitude():
     return datum
 
 
+# TODO @nghia and mathew replace with polynomial gradient descent
 def do_quadratic_least_squares_regression(data):
+    """
+    Perform a quadratic regression on the data and return the coefficients for standard form
+    Elizabeth (Ms. Rakotyanskaya) wrote this   ✌(◕‿-)✌ DEAD INSIDE 
+
+    https://www.easycalculation.com/statistics/learn-quadratic-regression.php
+    https://www.azdhs.gov/documents/preparedness/state-laboratory/lab-licensure-certification/technical-resources/calibration-training/12-quadratic-least-squares-regression-calib.pdf
+    """
     # very general
     x = [datum[0] for datum in data]
     y = [datum[1] for datum in data]
@@ -40,9 +48,11 @@ def do_quadratic_least_squares_regression(data):
 
     """
     Perform a quadratic regression on the data and return the coefficients for standard form
-     YESSSSSSSS we are literaly so fucking smart ALBERT EINSTIN WHO??? I DONT NEED FRED ANYMORE <3 imagine it breaks tomorrow iwill cryIM GONNA CRY TOO SO LETS GIT COMMIT IT RN 
+    
     https://www.easycalculation.com/statistics/learn-quadratic-regression.php
     https://www.azdhs.gov/documents/preparedness/state-laboratory/lab-licensure-certification/technical-resources/calibration-training/12-quadratic-least-squares-regression-calib.pdf
+    
+    a*x^1.5 + bx + c
     """
     print(a, b, c)
     return a, b, c
@@ -59,12 +69,15 @@ def quadratic(a, b, c, x):
     return a * x * x + b * x + c
 
 
-altitude_buffer = flight_data
-integral_total = 0
+# Flight data for regression
+altitude_buffer = []
 
+# PID variables
+integral_total = 0
 last_time = None
 last_error = None
 
+# Safety code
 MAX_RUNTIME_AT_CALIBRATE = 10  # seconds
 CALIBRATE_SPEED = 0.1  # duty cycle
 
@@ -73,48 +86,57 @@ SAFEST_POSITION = MAX_RUNTIME_AT_CALIBRATE * CALIBRATE_SPEED
 motor_position = 0
 m_throttle = 0
 
-# while True:
-time, altitude = get_altitude()
-altitude_buffer.append((time, altitude))
+# Main code
+while True:
+    # TODO @pblo wait until launch is detected
+    time, altitude = get_altitude()
+    altitude_buffer.append((time, altitude))
 
-a, b, c = do_quadratic_least_squares_regression(altitude_buffer)
+    if len(altitude_buffer) < 3:
+        continue
 
-ra, rb, rc = do_quadratic_least_squares_regression([(0, 0), (1, 1), (2, 4), (3, 9)])
-print(ra, rb, rc)
+    # TODO @pablo add code to wait until motor burnout 5 s into flight
 
-x_of_apex = -b / (2 * a)
+    a, b, c = do_quadratic_least_squares_regression(altitude_buffer)
 
-# pid goes here
-predicted_apogee = quadratic(a, b, c, x_of_apex)
+    # TODO @nghia and mthew polynomial maxima x-coordinate (-b/1.5a)^2
 
-# maybe unit conversion from meters or whatever cheese to feet
-pid_error = predicted_apogee - 5000
+    x_of_apex = -b / (2 * a)
 
-kP = 1
-kI = 0
-kD = 0
+    # pid goes here
+    predicted_apogee = quadratic(a, b, c, x_of_apex) # TODO @nghia and mathew replace with polynomial evaluation at x_of_apex
 
-P = pid_error * kP
-I = kI * integral_total
+    # maybe unit conversion from meters or whatever cheese to feet
+    pid_error = predicted_apogee - 5280 # TODO @nghia and mathew check units are the same
 
-derivative_term = 0
-if last_error is not None:
-    dT = time - last_time
-    dE = pid_error - last_error
-    derivative_term = dE / dT
-    integral_total += pid_error * dT
-    motor_position += m_throttle * dT
-    m_throttle = 0
-    D = kD * derivative_term
-    m_throttle_unsafe = - (P + I + D)
-    # motor safety positional code goes here
+    kP = 1
+    kI = 0
+    kD = 0
 
-    if (motor_position + m_throttle_unsafe * dT) < SAFEST_POSITION:
-        m_throttle = m_throttle_unsafe
+    # TODO @aanand test PID code
 
-    # motor magic yadda yadda
+    P = pid_error * kP
+    I = kI * integral_total
 
-last_error = pid_error
-last_time = time
+    derivative_term = 0
+    if last_error is not None:
+        dT = time - last_time
+        dE = pid_error - last_error
+        derivative_term = dE / dT
+        integral_total += pid_error * dT
+        # TODO @aanand update to match openrocket listener simulation
+        motor_position += m_throttle * dT
+        m_throttle = 0
+        D = kD * derivative_term
+        m_throttle_unsafe = - (P + I + D)
+        # motor safety positional code goes here
 
-log_frame(time, altitude, predicted_apogee)
+        if (motor_position + m_throttle_unsafe * dT) < SAFEST_POSITION:
+            m_throttle = m_throttle_unsafe
+
+        # motor magic yadda yadda
+
+    last_error = pid_error
+    last_time = time
+
+    log_frame(time, altitude, predicted_apogee)
