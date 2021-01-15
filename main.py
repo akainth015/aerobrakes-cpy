@@ -4,32 +4,32 @@ flight_data = [(datum[0], datum[1]) for datum in [
     not line.startswith("#") and 18 > float(line.split(",")[0]) > 4
 ]]
 
-didx = 0
+
 import time 
 import board
 import busio
 import adafruit_bmp3xx
+didx = 0
+
 # TODO @pablo add in altimeter and sensor reading
 def get_altitude():
     global didx
 
     i2c = busio.I2C(board.SCL, board.SDA)
     bmp = adafruit_bmp3xx.BMP3XX_I2C(i2c)
-    while True:
-        print("Pressure: {:6.1f}".format(bmp.pressure))         # Don't need to print values 
-        print("Temperature: {:5.2f}".format(bmp.temperature))
+    
+    # print("Pressure: {:6.1f}".format(bmp.pressure))          
+    # print("Temperature: {:5.2f}".format(bmp.temperature))
 
-        bmp.sea_level_pressure = 1013.25 #This constant value needs to be updated based on launch location
-        print("Altitude: {} meters".format(bmp.altitude))
-        time.sleep(2)
-
+    bmp.sea_level_pressure = 1013.25    # This constant value needs to be updated based on launch location, it affects the altitude calculation 
+    # print("Altitude: {} meters".format(bmp.altitude)) 
 
     """
     Just ask the onboard Amishi lol !!!!!!!!!!!!lol
     """
     datum = flight_data[didx]
     didx += 1
-    return datum
+    # return datum     simulated data 
 
     return (time.time, bmp.altitude)
 
@@ -102,18 +102,16 @@ motor_position = 0
 m_throttle = 0
 
 # Main code
-#while True:
-    # TODO @pblo wait until launch is detected
+while True:
+    # TODO @pablo wait until launch is detected
 """
 if sensor.linear_acceleration[2] > 50:
         launch_detected = True
      
-         * The time to wait before simulating fin deployment
+        Use IMU
           
 """
-        # val DEPLOYMENT_DELAY = 5.seconds
-    time.sleep(5)           # The time to wait before simulating fin deployment
-
+       
     time, altitude = get_altitude()
     altitude_buffer.append((time, altitude))
 
@@ -121,11 +119,16 @@ if sensor.linear_acceleration[2] > 50:
         continue
 
     # TODO @pablo add code to wait until motor burnout 5 s into flight
-    time.sleep(5) 
+
+    time.sleep(5) # The time to wait before simulating fin deployment
 
     a, b, c = do_quadratic_least_squares_regression(altitude_buffer)
 
-    # TODO @nghia and mthew polynomial maxima x-coordinate (-b/1.5a)^2
+    # polynomial maxima x-coordinate (-b/1.5a)^2 
+
+    ra, rb, rc = do_quadratic_least_squares_regression([(0, 0), (1, 1), (2, 4), (3, 9)])
+    print(ra, rb, rc)
+
 
     x_of_apex = -b / (2 * a)
 
