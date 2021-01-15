@@ -5,10 +5,25 @@ flight_data = [(datum[0], datum[1]) for datum in [
 ]]
 
 didx = 0
-
+import time 
+import board
+import busio
+import adafruit_bmp3xx
 # TODO @pablo add in altimeter and sensor reading
 def get_altitude():
     global didx
+
+    i2c = busio.I2C(board.SCL, board.SDA)
+    bmp = adafruit_bmp3xx.BMP3XX_I2C(i2c)
+    while True:
+        print("Pressure: {:6.1f}".format(bmp.pressure))         # Don't need to print values 
+        print("Temperature: {:5.2f}".format(bmp.temperature))
+
+        bmp.sea_level_pressure = 1013.25 #This constant value needs to be updated based on launch location
+        print("Altitude: {} meters".format(bmp.altitude))
+        time.sleep(2)
+
+
     """
     Just ask the onboard Amishi lol !!!!!!!!!!!!lol
     """
@@ -16,13 +31,13 @@ def get_altitude():
     didx += 1
     return datum
 
+    return (time.time, bmp.altitude)
 
 # TODO @nghia and mathew replace with polynomial gradient descent
 def do_quadratic_least_squares_regression(data):
     """
     Perform a quadratic regression on the data and return the coefficients for standard form
     Elizabeth (Ms. Rakotyanskaya) wrote this   ✌(◕‿-)✌ DEAD INSIDE 
-
     https://www.easycalculation.com/statistics/learn-quadratic-regression.php
     https://www.azdhs.gov/documents/preparedness/state-laboratory/lab-licensure-certification/technical-resources/calibration-training/12-quadratic-least-squares-regression-calib.pdf
     """
@@ -70,7 +85,7 @@ def quadratic(a, b, c, x):
 
 
 # Flight data for regression
-altitude_buffer = []
+altitude_buffer = flight_data
 
 # PID variables
 integral_total = 0
@@ -87,8 +102,18 @@ motor_position = 0
 m_throttle = 0
 
 # Main code
-while True:
+#while True:
     # TODO @pblo wait until launch is detected
+"""
+if sensor.linear_acceleration[2] > 50:
+        launch_detected = True
+     
+         * The time to wait before simulating fin deployment
+          
+"""
+        # val DEPLOYMENT_DELAY = 5.seconds
+    time.sleep(5)           # The time to wait before simulating fin deployment
+
     time, altitude = get_altitude()
     altitude_buffer.append((time, altitude))
 
@@ -96,6 +121,7 @@ while True:
         continue
 
     # TODO @pablo add code to wait until motor burnout 5 s into flight
+    time.sleep(5) 
 
     a, b, c = do_quadratic_least_squares_regression(altitude_buffer)
 
