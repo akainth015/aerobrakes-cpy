@@ -5,7 +5,7 @@ flight_data = [(datum[0], datum[1]) for datum in [
 ]]
 
 
-import time 
+import time
 import board
 import busio
 import adafruit_bmp3xx
@@ -17,19 +17,19 @@ def get_altitude():
 
     i2c = busio.I2C(board.SCL, board.SDA)
     bmp = adafruit_bmp3xx.BMP3XX_I2C(i2c)
-    
-    # print("Pressure: {:6.1f}".format(bmp.pressure))          
+
+    # print("Pressure: {:6.1f}".format(bmp.pressure))
     # print("Temperature: {:5.2f}".format(bmp.temperature))
 
-    bmp.sea_level_pressure = 1013.25    # This constant value needs to be updated based on launch location, it affects the altitude calculation 
-    # print("Altitude: {} meters".format(bmp.altitude)) 
+    bmp.sea_level_pressure = 1013.25    # This constant value needs to be updated based on launch location, it affects the altitude calculation
+    # print("Altitude: {} meters".format(bmp.altitude))
 
     """
     Just ask the onboard Amishi lol !!!!!!!!!!!!lol
     """
     datum = flight_data[didx]
     didx += 1
-    # return datum     simulated data 
+    # return datum     simulated data
 
     return (time.time, bmp.altitude)
 
@@ -37,7 +37,7 @@ def get_altitude():
 def do_quadratic_least_squares_regression(data):
     """
     Perform a quadratic regression on the data and return the coefficients for standard form
-    Elizabeth (Ms. Rakotyanskaya) wrote this   ✌(◕‿-)✌ DEAD INSIDE 
+    Elizabeth (Ms. Rakotyanskaya) wrote this   ✌(◕‿-)✌ DEAD INSIDE
     https://www.easycalculation.com/statistics/learn-quadratic-regression.php
     https://www.azdhs.gov/documents/preparedness/state-laboratory/lab-licensure-certification/technical-resources/calibration-training/12-quadratic-least-squares-regression-calib.pdf
     """
@@ -61,16 +61,30 @@ def do_quadratic_least_squares_regression(data):
     b = ((exy * ex2x2) - (ex2y * exx2)) / ((exx * ex2x2) - (exx2 ** 2))
     c = ((ey / n) - (b * (ex / n)) - (a * (ex2 / n)))
 
+
     """
     Perform a quadratic regression on the data and return the coefficients for standard form
-    
+
     https://www.easycalculation.com/statistics/learn-quadratic-regression.php
     https://www.azdhs.gov/documents/preparedness/state-laboratory/lab-licensure-certification/technical-resources/calibration-training/12-quadratic-least-squares-regression-calib.pdf
-    
+
     a*x^1.5 + bx + c
     """
     print(a, b, c)
     return a, b, c
+
+a = -51.0
+b = 330.0
+c = -420.0
+
+def Polynomial_Gradient_Descent(data):
+    global a,b,c
+    derivativeOfMSE = sum([(altitude - (a*time**1.5 + b*time + c))/2000 for time , altitude in data])/len(data)
+    c += 0.05*derivativeOfMSE
+    b += 0.05*derivativeOfMSE*sum([datum[0] for datum in data])
+    a += 0.05*derivativeOfMSE*sum([datum[0]**1.5 for datum in data])
+
+    return (a,b,c)
 
 
 def log_frame(time, altitude, predicted_apogee):
@@ -104,14 +118,14 @@ m_throttle = 0
 # Main code
 while True:
     # TODO @pablo wait until launch is detected
-"""
-if sensor.linear_acceleration[2] > 50:
-        launch_detected = True
-     
-        Use IMU
-          
-"""
-       
+    """
+    if sensor.linear_acceleration[2] > 50:
+            launch_detected = True
+
+            Use IMU
+
+    """
+
     time, altitude = get_altitude()
     altitude_buffer.append((time, altitude))
 
@@ -122,21 +136,22 @@ if sensor.linear_acceleration[2] > 50:
 
     time.sleep(5) # The time to wait before simulating fin deployment
 
-    a, b, c = do_quadratic_least_squares_regression(altitude_buffer)
+    a, b, c = Polynomial_Gradient_Descent(altitude_buffer)
 
-    # polynomial maxima x-coordinate (-b/1.5a)^2 
+    # polynomial maxima x-coordinate (-b/1.5a)^2
 
-    ra, rb, rc = do_quadratic_least_squares_regression([(0, 0), (1, 1), (2, 4), (3, 9)])
-    print(ra, rb, rc)
+    '''ra, rb, rc = Polynomial_Gradient_Descent([(0, 0), (1, 1), (2, 4), (3, 9)])
+    print(ra, rb, rc)'''
 
 
-    x_of_apex = -b / (2 * a)
+    x_of_apex = (-b/1.5*a)**2
+
 
     # pid goes here
-    predicted_apogee = quadratic(a, b, c, x_of_apex) # TODO @nghia and mathew replace with polynomial evaluation at x_of_apex
+    predicted_apogee = a*x_of_apex**1.5 + b*x_of_apex + c # TODO @nghia and mathew replace with polynomial evaluation at x_of_apex
 
     # maybe unit conversion from meters or whatever cheese to feet
-    pid_error = predicted_apogee - 5280 # TODO @nghia and mathew check units are the same
+    pid_error = predicted_apogee - 1609 # TODO @nghia and mathew check units are the same
 
     kP = 1
     kI = 0
