@@ -312,15 +312,15 @@ bmp.sea_level_pressure = bmp.pressure
 # The CircuitPython library for the IMU does not support reading the interrupt status register, so we will manually
 # interact with the IMU over i2c. Addresses are from the IMU datasheet
 # Enable the high-g interrupt in the INT_EN register
-imu._write_register(0x10, 0b00100000)
+imu._write_register(0x10, 0b01000000)
 # Enable the appropriate axis in ACC_INT_Settings register
-imu._write_register(0x12, 0b10000000)
+imu._write_register(0x12, 0b00010000)
 # Set a 5g threshold in ACC_HG_THRES
-imu._write_register(0x14, 0b00000000)
+# imu._write_register(0x14, 0b00000000)
 # Using the default 0x0F value for ACC_HG_DURATION
 
 # Stall until the IMU detects lift-off
-while imu._read_register(0x37) != 0b00100000:
+while imu._read_register(0x37) != 0b01000000:
     pass
 
 time.sleep(5)  # Step 2: disable fins interfering with motor burn
