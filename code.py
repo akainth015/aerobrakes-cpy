@@ -21,7 +21,6 @@ import adafruit_bmp3xx
 from busio import I2C
 from board import SDA, SCL, D13, D4
 import pwmio
-from adafruit_motor import servo, motor
 
 import time
 
@@ -272,7 +271,7 @@ class AltitudeRegressionCalculator:
     function regression.
     """
     a, b, c = -51, 330, -420
-    ALPHA = 0.05
+    ALPHA = 0.9
 
     def process_frames(self, data_scan):
         """
@@ -299,12 +298,11 @@ class AltitudeRegressionCalculator:
 
 
 i2c = I2C(SCL, SDA)
-imu = adafruit_bno055.BNO055_I2C(i2c)
+imu = adafruit_bno055.BNO055(i2c)
 bmp = adafruit_bmp3xx.BMP3XX_I2C(i2c)
 
 spd = pwmio.PWMOut(D13)
-dir = pwmio.PWMOut(D4)
-fin_motor = motor.DCMotor(spd, dir)
+direction = pwmio.PWMOut(D4)
 
 # Reset the altimeter such that the current altitude is 0 m
 bmp.sea_level_pressure = bmp.pressure
@@ -312,27 +310,30 @@ bmp.sea_level_pressure = bmp.pressure
 # The CircuitPython library for the IMU does not support reading the interrupt status register, so we will manually
 # interact with the IMU over i2c. Addresses are from the IMU datasheet
 # Enable the high-g interrupt in the INT_EN register
-imu._write_register(0x10, 0b01000000)
+# imu._write_register(0x10, 0b01000000)
 # Enable the appropriate axis in ACC_INT_Settings register
-imu._write_register(0x12, 0b00010000)
+# imu._write_register(0x12, 0b00010000)
 # Set a 5g threshold in ACC_HG_THRES
 # imu._write_register(0x14, 0b00000000)
 # Using the default 0x0F value for ACC_HG_DURATION
 
 # Stall until the IMU detects lift-off
-while imu._read_register(0x37) != 0b01000000:
-    pass
+from math import sqrt
+while sqrt(sum([component ** 2 for component in imu.linear_acceleration])) < 10:
+    time.sleep(0.1)
 
-time.sleep(5)  # Step 2: disable fins interfering with motor burn
+print("Amishi activation started")
+
+# time.sleep(5)  # Step 2: disable fins interfering with motor burn
 
 flight_regression = AltitudeRegressionCalculator()
-pid = PID(0.34, 0, 0, setpoint=1609, output_limits=(-1, 1))
+pid = PID(1, 0, 0, setpoint=1609, output_limits=(-1, 1))
 
 launch_time = time.time()
 data_scan = []
 
 CALIBRATE_SPEED = 0.1
-CALIBRATE_TIME = 10
+CALIBRATE_TIME = 5.8
 
 SAFEST_POSITION = CALIBRATE_SPEED * CALIBRATE_TIME
 
@@ -340,26 +341,28 @@ motor_position = 0
 motor_throttle = 0
 last_timestamp = time.time()
 
-# simulated_flight_data = [(datum[0], datum[1] * 0.3048) for datum in [
-#     [float(datum) for datum in line.split(",") if datum.strip()] for line in
-#     open("noFinsADAS1.csv", "r").readlines() if
-#     not line.startswith("#") and 18 > float(line.split(",")[0]) > 4
-# ]]
+flight_data_file = open("noFinsADAS1.csv")
 
-while len(data_scan) < 3 or data_scan[-1][1] < bmp.altitude:
-# while True:
+# while len(data_scan) < 3 or data_scan[-1][1] < bmp.altitude:
+while True:
     current_time = time.time() - launch_time
-    data_scan = [(T, A) for T, A in data_scan if T >= current_time - 2] + [
-        (current_time, bmp.altitude)
-    ]  # TODO opportunity for optimization
-    # data_scan = simulated_flight_data
+    # data_scan = [(T, A) for T, A in data_scan if T >= current_time - 2] + [
+    #     (current_time, bmp.altitude)
+    # ]  # TODO opportunity for optimization
+    data = [float(x) for x in flight_data_file.readline().split(", ")]
+    frame = (data[0], data[1])
+    data_scan = [(T, A) for T, A in data_scan if T >= current_time - 0.5] + [
+        frame
+    ]
 
     flight_regression.process_frames(data_scan)
 
     predicted_apogee = flight_regression.get_predicted_apogee()
-    output = pid(predicted_apogee)
+    output = -pid(predicted_apogee)
+    print(predicted_apogee)
+    # output = -1
 
-    delta_time = time.time() - last_timestamp
+    delta_time = time.monotonic() - last_timestamp
     motor_position += motor_throttle * delta_time
 
     future_position = motor_position + output * delta_time * 1.15
@@ -368,6 +371,8 @@ while len(data_scan) < 3 or data_scan[-1][1] < bmp.altitude:
     else:
         motor_throttle = output
 
-    fin_motor.throttle = motor_throttle
+    direction.duty_cycle = 0xffff if motor_throttle > 0 else 0
+    spd.duty_cycle = int(abs(motor_throttle) * 0xffff)
 
-    last_timestamp = time.time()
+    last_timestamp = time.monotonic()
+    time.sleep(0.05)
