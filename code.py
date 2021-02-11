@@ -269,9 +269,11 @@ class AltitudeRegressionCalculator:
     """
     An abstraction that makes it easier to interact with the polynomial
     function regression.
+    
+    a*T^1.5 + b*T + c
     """
-    a, b, c = -51, 330, -420
-    ALPHA = 0.9
+    a, b, c = -50, 330, -420
+    ALPHA = 0.8
 
     def process_frames(self, data_scan):
         """
@@ -281,9 +283,9 @@ class AltitudeRegressionCalculator:
         derivative = sum(
             [(A - (self.a * T ** 1.5 + self.b * T + self.c)) / 2000 for T, A in
              data_scan]) / len(data_scan)
-        self.a += self.ALPHA * derivative * sum(
-            [(T / 30) ** 1.5 for T, _ in data_scan])
-        self.b += self.ALPHA * derivative * sum([T / 30 for T, _ in data_scan])
+        self.a += self.ALPHA * sum(
+            [(A - (self.a * T ** 1.5 + self.b * T + self.c)) / 2000 * (T / 30) ** 1.5 for T, A in data_scan])
+        self.b += self.ALPHA * sum([(A - (self.a * T ** 1.5 + self.b * T + self.c)) / 2000 * T / 30 for T, A in data_scan])
         self.c += self.ALPHA * derivative
 
     def get_predicted_apogee(self):
@@ -327,7 +329,7 @@ print("Amishi activation started")
 # time.sleep(5)  # Step 2: disable fins interfering with motor burn
 
 flight_regression = AltitudeRegressionCalculator()
-pid = PID(1, 0, 0, setpoint=1609, output_limits=(-1, 1))
+pid = PID(1.15, 0, 6, setpoint=1609, output_limits=(-1, 1))
 
 launch_time = time.time()
 data_scan = []
@@ -359,13 +361,13 @@ while True:
 
     predicted_apogee = flight_regression.get_predicted_apogee()
     output = -pid(predicted_apogee)
-    print(predicted_apogee)
+    print(predicted_apogee / 0.3048)
     # output = -1
 
     delta_time = time.monotonic() - last_timestamp
     motor_position += motor_throttle * delta_time
 
-    future_position = motor_position + output * delta_time * 1.15
+    future_position = motor_position + output * delta_time * 1.5
     if future_position < 0 or future_position > SAFEST_POSITION:
         motor_throttle = 0
     else:
