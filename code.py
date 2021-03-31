@@ -292,11 +292,16 @@ class AltitudeRegressionCalculator:
         """
         Automatically calculate the predicted apogee based on the latest regression data
         """
-        apogee_time = (-self.b / 1.5 / self.a) ** 2
+        apogee_time = self.get_apogee_time()
         return self.a * apogee_time ** 1.5 + self.b * apogee_time + self.c
+
+    def get_apogee_time(self):
+        apogee_time = (-self.b / 1.5 / self.a) ** 2
+        return apogee_time
     #
     # def __repr__(self):
     #     return f"Regression({self.a}, {self.b}, {self.c})"
+
 
 
 i2c = I2C(SCL, SDA)
@@ -326,7 +331,7 @@ while sqrt(sum([component ** 2 for component in imu.linear_acceleration])) < 10:
 
 print("Amishi activation started")
 
-# time.sleep(5)  # Step 2: disable fins interfering with motor burn
+time.sleep(5)  # Step 2: disable fins interfering with motor burn
 
 flight_regression = AltitudeRegressionCalculator()
 pid = PID(1.15, 0, 6, setpoint=1609, output_limits=(-1, 1))
@@ -343,27 +348,48 @@ motor_position = 0
 motor_throttle = 0
 last_timestamp = time.time()
 
-flight_data_file = open("noFinsADAS1.csv")
+# flight_data_file = open("noFinsADAS1.csv")
 
 # while len(data_scan) < 3 or data_scan[-1][1] < bmp.altitude:
 while True:
     current_time = time.time() - launch_time
-    # data_scan = [(T, A) for T, A in data_scan if T >= current_time - 2] + [
-    #     (current_time, bmp.altitude)
-    # ]  # TODO opportunity for optimization
-    data = [float(x) for x in flight_data_file.readline().split(", ")]
-    frame = (data[0], data[1])
-    data_scan = [(T, A) for T, A in data_scan if T >= current_time - 0.5] + [
-        frame
-    ]
+    data_scan = [(T, A) for T, A in data_scan if T >= current_time - 2] + [
+        (current_time, bmp.altitude)
+    ]  # TODO opportunity for optimization
+    # data = [float(x) for x in flight_data_file.readline().split(", ")]
+    # frame = (data[0], data[1])
+    # data_scan = [(T, A) for T, A in data_scan if T >= current_time - 0.5] + [
+    #     frame
+    # ]
 
     flight_regression.process_frames(data_scan)
 
     predicted_apogee = flight_regression.get_predicted_apogee()
+
+    if current_time > flight_regression.get_apogee_time() - 2:
+        break
+
     output = -pid(predicted_apogee)
     print(predicted_apogee / 0.3048)
     # output = -1
 
+    delta_time = time.monotonic() - last_timestamp
+    motor_position += motor_throttle * delta_time
+
+    future_position = motor_position + output * delta_time * 1.5
+    if future_position < 0 or future_position > SAFEST_POSITION:
+        motor_throttle = 0
+    else:
+        motor_throttle = output
+
+    direction.duty_cycle = 0xffff if motor_throttle > 0 else 0
+    spd.duty_cycle = int(abs(motor_throttle) * 0xffff)
+
+    last_timestamp = time.monotonic()
+    time.sleep(0.05)
+
+while True:
+    output = -1
     delta_time = time.monotonic() - last_timestamp
     motor_position += motor_throttle * delta_time
 
